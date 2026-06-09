@@ -1,6 +1,59 @@
-# options-mm-simulator
-
 # Options Market Making Simulator
+
+## Overview
+
+This project simulates an options market maker operating on a single underlying stock. The goal is to model the core P&L dynamics of market making: earning income by quoting bid-ask spreads while managing the inventory risk that accumulates from random order flow.
+
+A market maker is obligated to continuously quote both a bid and an ask price. Traders hit these quotes randomly — some buy, some sell — leaving the MM with a net options position it did not choose. The central challenge is managing this inventory: too much exposure to a large move in the underlying can wipe out weeks of spread income in a single day.
+
+This simulator captures that tradeoff end-to-end:
+
+1. **Stock prices** evolve as Geometric Brownian Motion
+2. **Traders** arrive randomly via a Poisson process, hitting the MM's bid or ask
+3. **The market maker** quotes spreads around the Black-Scholes theoretical value and adjusts quotes based on current inventory
+4. **Delta hedging** neutralizes directional exposure by trading the underlying
+5. **P&L** is tracked and decomposed into spread income, theta decay, and gamma losses
+
+The quoting strategy follows the **Avellaneda-Stoikov (2008)** framework, which derives optimal bid-ask spreads analytically as a function of inventory level and time remaining — providing a rigorous benchmark against naive fixed-spread strategies.
+
+## Motivation
+
+Market making is one of the core functions at quantitative trading firms (Citadel Securities, Jane Street, Optiver, DRW). Understanding how a MM balances spread income against inventory risk — and how Greeks like gamma and theta drive that tradeoff — is fundamental to options trading at a quantitative level. This project builds that intuition from the ground up, implementing every component from scratch rather than relying on off-the-shelf backtesting libraries.
+
+## Project Structure
+
+```
+options-mm-simulator/
+├── src/
+│   ├── black_scholes.py   # B-S pricing engine + Greeks (Δ, Γ, Θ, ν)
+│   ├── simulator.py       # GBM price paths + Poisson order flow
+│   ├── market_maker.py    # Avellaneda-Stoikov quoting strategy
+│   ├── hedger.py          # Delta hedging logic
+│   └── pnl.py             # P&L tracking and attribution
+├── notebooks/
+│   └── analysis.ipynb     # Results, visualizations, findings
+├── tests/                 # Validation tests for each module
+├── requirements.txt
+└── README.md
+```
+
+## Setup
+
+```bash
+git clone https://github.com/YOUR_USERNAME/options-mm-simulator.git
+cd options-mm-simulator
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+## Tech Stack
+
+- **Python 3.11+**
+- `numpy` — numerical simulation
+- `scipy` — statistical distributions
+- `matplotlib` — visualization
+- `pandas` — data analysis
 
 ## 1. Black-Scholes Pricing Engine (`src/black_scholes.py`)
 
