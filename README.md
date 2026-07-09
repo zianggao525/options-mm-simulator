@@ -284,4 +284,48 @@ Tests check that flat inventory needs no hedge trade, that long and short invent
 python3 -m tests.test_hedger
 ```
 
+## 5. P&L Attribution (`src/pnl.py`)
+
+### Overview
+
+Everything up to this point produces cash flows and positions — spread income and inventory from the market maker, hedge trades and cash from the hedger — but none of it says whether the strategy is actually making money, or *why*. `pnl.py` ties those pieces together into a single portfolio value and decomposes the P&L into the components the README's motivation section promised: spread income, theta decay, and gamma losses.
+
+### Mark-to-Market Value
+
+At any point in time, the total value of the book is cash on hand plus the current value of everything still held open:
+
+$$V = \text{cash} + q \cdot C_{BS}(S, K, T-t, r, \sigma) + h \cdot S$$
+
+where $q$ is option inventory and $h$ is the hedge share position. For a flat, untraded book this is exactly zero. Right after a trade — before any stock move or rehedge — this is where the spread edge shows up: selling at the ask (above the Black-Scholes mid) while the inventory is marked at that same mid captures the half-spread as immediate, realized P&L. That's the cleanest way to see spread income working as intended.
+
+### Decomposing a Time Step: Theta and Gamma
+
+Once a position is delta-hedged, the directional (delta) component of its P&L is offset by the hedge trade, leaving two things behind: time decay and the effect of the stock's move on an imperfectly-static hedge. Over one time step this is the classic delta-hedged option P&L decomposition:
+
+$$p_{\text{theta}} = q \cdot \Theta_{BS} \cdot \Delta t, \qquad p_{\text{gamma}} = \frac{1}{2} q \cdot \Gamma_{BS} \cdot (S_{new} - S_{old})^2$$
+
+Theta P&L is negative for long inventory and positive for short inventory — long options lose value to time decay, short options collect it. Gamma P&L only depends on the *squared* stock move, so its sign depends only on the sign of inventory, not on which direction the stock moved: a long-gamma position (long inventory) benefits from a big move either way, and a short-gamma position (short inventory) is hurt by one either way. This is the core tension the project is built to illustrate — collecting theta by staying short options is only free money until a large move turns the gamma term against you.
+
+### Usage
+
+```python
+from src.market_maker import MarketMaker
+from src.pnl import mark_to_market, decompose_step
+
+mm = MarketMaker(S=100, K=100, T=0.25, r=0.05, sigma=0.20)
+mm.process_order_flow(net_flow=5, S=100, T_remaining=0.25)
+
+mark_to_market(mm, S=100, T_remaining=0.25)  # captured spread edge
+
+theta_pnl, gamma_pnl = decompose_step(mm, S_prev=100, S_new=103, T_remaining=0.25, dt=1/365)
+```
+
+### Validation
+
+Tests check that a flat book has zero mark-to-market value, that a trade immediately captures the expected spread edge, that theta P&L is negative for long inventory and positive for short, that gamma P&L is positive for long inventory regardless of which direction the stock moves (and negative for short inventory), and that zero elapsed time produces zero theta and gamma P&L. Run tests with:
+
+```bash
+python3 -m tests.test_pnl
+```
+
 Greeks calculator: https://www.tradingblock.com/calculators/option-greeks-calculator
