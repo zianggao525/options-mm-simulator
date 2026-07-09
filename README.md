@@ -198,8 +198,8 @@ $$\delta = \gamma \sigma^2 (T-t) + \frac{2}{\gamma} \ln\left(1 + \frac{\gamma}{\
 
 This has two competing components:
 
-- **Time-decay term** ($\gamma \sigma^2 (T-t)$): grows with volatility, risk aversion, and time remaining. More time left means more opportunity for the underlying to move against an open position, so the model rationally quotes wider.
-- **Order-flow term** ($\frac{2}{\gamma}\ln(1+\gamma/\kappa)$): constant with respect to time, governed by risk aversion and $\kappa$ (how sharply order arrival probability falls off as quotes move away from the mid). This caps how wide the spread can go before the market maker simply stops getting filled.
+- **Time-decay term** (the first term above): grows with volatility, risk aversion, and time remaining. More time left means more opportunity for the underlying to move against an open position, so the model rationally quotes wider.
+- **Order-flow term** (the second term above): constant with respect to time, governed by risk aversion and κ (how sharply order arrival probability falls off as quotes move away from the mid). This caps how wide the spread can go before the market maker simply stops getting filled.
 
 | Parameter | Description | Default |
 |-----------|--------------|---------|
