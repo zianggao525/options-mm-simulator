@@ -241,4 +241,47 @@ python3 -m tests.test_market_maker
 
 Currently only calls are supported — the reservation price and spread formulas track raw contract count and the underlying's volatility, not option delta, so they implicitly assume inventory behaves directionally like a long/short position in the underlying itself. That assumption holds for calls but would need to be revisited (sign-aware skew, or delta-weighted inventory) before puts could be added to the same book.
 
+## 4. Delta Hedger (`src/hedger.py`)
+
+### Overview
+
+Quoting with inventory-aware spreads (Section 3) manages *how much* risk the market maker takes on, but it doesn't eliminate it — the market maker still ends up holding a directional options position between trades. Delta hedging is what neutralizes that directional exposure: by trading shares of the underlying stock, the market maker offsets the option position's sensitivity to price moves, isolating the P&L it actually wants to keep (spread income and theta decay) from the P&L it doesn't (getting run over by a big move in the stock).
+
+Rather than tracking its own separate state, the hedger operates directly on a `MarketMaker` instance, reading its `inventory` and writing to the `cash` and `hedge_pos` fields that already exist on it — the hedge position and the option position are two sides of the same book, not two independent things being reconciled after the fact.
+
+### Rebalancing to Target Delta
+
+At each time step, the hedger computes the option position's delta and figures out the stock position that would offset it:
+
+$$\text{target\_hedge} = -q \cdot \Delta_{BS}(S, K, T-t, r, \sigma)$$
+
+where $q$ is the option inventory and $\Delta_{BS}$ is the Black-Scholes delta. Long option inventory carries positive delta, so the offsetting hedge is a *short* stock position (and short inventory is hedged long). The hedger then trades only the difference between this target and whatever hedge position it's already holding — so a rebalance after a small inventory change only trades the incremental delta, not a full re-hedge from scratch. Buying shares to hedge costs cash; selling them raises it, using the same cash-accounting convention as `process_order_flow`.
+
+### Checking the Hedge
+
+A second helper computes the portfolio's net delta — option delta from inventory plus the current hedge share position — which should sit at (approximately) zero immediately after a rebalance. This is mainly a validation tool: it's the way to confirm the hedge is actually doing its job rather than trusting the rebalancing math blindly.
+
+### Usage
+
+```python
+from src.market_maker import MarketMaker
+from src.hedger import rebalance, net_delta
+
+mm = MarketMaker(S=100, K=100, T=0.25, r=0.05, sigma=0.20)
+mm.inventory = 10  # long 10 calls from order flow
+
+trade = rebalance(mm, S=100, T_remaining=0.25)
+# mm.hedge_pos is now short enough shares to offset the calls' delta
+
+net_delta(mm, S=100, T_remaining=0.25)  # ~0.0
+```
+
+### Validation
+
+Tests check that flat inventory needs no hedge trade, that long and short inventory get hedged with the correctly signed stock position, that net delta lands at ~0 right after rebalancing, that a second rebalance only trades the incremental delta change rather than re-hedging from scratch, and that buying hedge shares correctly debits cash. Run tests with:
+
+```bash
+python3 -m tests.test_hedger
+```
+
 Greeks calculator: https://www.tradingblock.com/calculators/option-greeks-calculator
