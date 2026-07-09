@@ -253,7 +253,7 @@ Rather than tracking its own separate state, the hedger operates directly on a `
 
 At each time step, the hedger computes the option position's delta and figures out the stock position that would offset it:
 
-$$\text{target\_hedge} = -q \cdot \Delta_{BS}(S, K, T-t, r, \sigma)$$
+$$h_{\text{target}} = -q \cdot \Delta_{BS}(S, K, T-t, r, \sigma)$$
 
 where $q$ is the option inventory and $\Delta_{BS}$ is the Black-Scholes delta. Long option inventory carries positive delta, so the offsetting hedge is a *short* stock position (and short inventory is hedged long). The hedger then trades only the difference between this target and whatever hedge position it's already holding — so a rebalance after a small inventory change only trades the incremental delta, not a full re-hedge from scratch. Buying shares to hedge costs cash; selling them raises it, using the same cash-accounting convention as `process_order_flow`.
 
