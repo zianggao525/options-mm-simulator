@@ -55,11 +55,13 @@ results.append(check("Short inventory → higher reservation price",
     r_short > r_flat,
     f"short={r_short:.4f}, flat={r_flat:.4f}"))
 
-# Spread widens as time runs out
+# Spread narrows as time runs out (Avellaneda-Stoikov: less time left means less
+# accumulated inventory risk, so the time-decay term shrinks toward the constant
+# order-flow term)
 spread_early = mm.optimal_spread(T_remaining=0.25)
 spread_late  = mm.optimal_spread(T_remaining=0.01)
-results.append(check("Spread widens near expiry",
-    spread_late > spread_early,
+results.append(check("Spread narrows near expiry",
+    spread_late < spread_early,
     f"early={spread_early:.4f}, near_expiry={spread_late:.4f}"))
 
 # Order flow processing

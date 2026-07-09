@@ -176,6 +176,69 @@ GBM paths are validated against the theoretical mean $S_0 e^{\mu T}$ across 1,00
 python3 -m tests.test_simulator
 ```
 
+## 3. Avellaneda-Stoikov Market Maker (`src/market_maker.py`)
 
+### Overview
+
+With a pricing engine and an order-flow simulator in place, the next piece is the market maker itself: the logic that decides where to place bid and ask quotes given current inventory and time remaining. A naive market maker would just quote a fixed spread around the Black-Scholes theoretical value regardless of position — but that ignores the central risk of the business, which is accumulating a large directional position that a sharp move in the underlying can turn into a big loss.
+
+The **Avellaneda-Stoikov (2008)** framework solves this with stochastic optimal control: given a market maker maximizing expected utility of terminal wealth, subject to inventory risk and Poisson order arrivals, it derives closed-form expressions for where to center quotes (the *reservation price*) and how wide to make them (the *optimal spread*). This project applies that framework to a single call option, using the Black-Scholes price as the theoretical mid and the underlying's volatility as the risk input.
+
+### Reservation Price: Inventory-Aware Fair Value
+
+Instead of quoting around the raw Black-Scholes price, the market maker quotes around a reservation price that shifts based on current inventory:
+
+$$r(S, t) = C_{BS}(S, K, T-t, r, \sigma) - q \cdot \gamma \sigma^2 (T - t)$$
+
+where $q$ is current inventory (positive = long, negative = short) and $\gamma$ is a risk-aversion parameter. If the market maker is long (bought more than it's sold), the reservation price drops below the theoretical mid — making the ask more attractive to hit and the bid less attractive, nudging inventory back toward flat. Short inventory does the reverse. A flat book leaves the reservation price equal to the Black-Scholes mid.
+
+### Optimal Spread: Balancing Risk Aversion Against Fill Probability
+
+$$\delta = \gamma \sigma^2 (T-t) + \frac{2}{\gamma} \ln\left(1 + \frac{\gamma}{\kappa}\right)$$
+
+This has two competing components:
+
+- **Time-decay term** ($\gamma \sigma^2 (T-t)$): grows with volatility, risk aversion, and time remaining. More time left means more opportunity for the underlying to move against an open position, so the model rationally quotes wider.
+- **Order-flow term** ($\frac{2}{\gamma}\ln(1+\gamma/\kappa)$): constant with respect to time, governed by risk aversion and $\kappa$ (how sharply order arrival probability falls off as quotes move away from the mid). This caps how wide the spread can go before the market maker simply stops getting filled.
+
+| Parameter | Description | Default |
+|-----------|--------------|---------|
+| `gamma` | Risk aversion — higher values widen spreads and increase inventory skew | 0.1 |
+| `kappa` | Order arrival sensitivity — higher values mean traders are more sensitive to spread width | 1.5 |
+
+A notable and non-obvious property of this formula: because the time-decay term shrinks as expiry approaches while the order-flow term stays constant, **the total spread narrows toward expiry**, not widens. That's the correct behavior of the AS model as originally derived — less time left means less accumulated inventory risk. It's also a known simplification in this context: the formula only knows about the underlying's volatility, not option-specific risk like gamma exploding near expiry, so it won't reproduce the spread-widening behavior a real options market maker exhibits late in an option's life.
+
+### Order Flow Processing and Cash Accounting
+
+Each time step, net order flow (buys minus sells, from the Poisson order-flow simulator) is matched against the current quotes:
+
+- **Positive net flow** (more buyers hit the ask): the market maker sells, inventory decreases, cash increases by `net_flow * ask`.
+- **Negative net flow** (more sellers hit the bid): the market maker buys, inventory increases, cash decreases by `net_flow * bid`.
+
+This is what turns quoting decisions into a running P&L: cash accumulates from spread income, while inventory accumulates the directional risk that the reservation price and spread are designed to manage.
+
+### Usage
+
+```python
+from src.market_maker import MarketMaker
+
+mm = MarketMaker(S=100, K=100, T=0.25, r=0.05, sigma=0.20)
+
+bid, ask = mm.get_quotes(S=100, T_remaining=0.25)
+
+# Simulate the MM selling 5 contracts to buyers
+mm.process_order_flow(net_flow=5, S=100, T_remaining=0.25)
+# mm.inventory == -5, mm.cash increased by 5 * ask
+```
+
+### Validation
+
+Tests check that quotes are well-formed (ask above bid, both positive), that inventory skews the reservation price in the correct direction for both long and short positions, that the spread narrows toward expiry as derived above, and that order flow updates inventory and cash correctly. Run tests with:
+
+```bash
+python3 -m tests.test_market_maker
+```
+
+Currently only calls are supported — the reservation price and spread formulas track raw contract count and the underlying's volatility, not option delta, so they implicitly assume inventory behaves directionally like a long/short position in the underlying itself. That assumption holds for calls but would need to be revisited (sign-aware skew, or delta-weighted inventory) before puts could be added to the same book.
 
 Greeks calculator: https://www.tradingblock.com/calculators/option-greeks-calculator
