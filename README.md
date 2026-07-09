@@ -328,4 +328,28 @@ Tests check that a flat book has zero mark-to-market value, that a trade immedia
 python3 -m tests.test_pnl
 ```
 
+## 6. Results and Analysis (`notebooks/analysis.ipynb`)
+
+### Overview
+
+With all four components built and tested independently, the notebook runs the full pipeline end to end — simulate a price path and order flow, quote and trade against it, delta-hedge the resulting inventory, and attribute the P&L — and compares the Avellaneda-Stoikov quoting strategy against a naive fixed-spread quoter across many simulated paths.
+
+### Single-Path Walkthrough
+
+For one simulated 3-month path, the notebook tracks option inventory, hedge share position, and cumulative P&L attributed to spread income, theta, and gamma at every trading day. The P&L decomposition reconstructs the actual mark-to-market P&L path almost exactly, with a small residual attributable to hedging only once per day rather than continuously.
+
+### Avellaneda-Stoikov vs. a Naive Fixed-Spread Quoter
+
+To test the README's claim that AS quoting is "a rigorous benchmark against naive fixed-spread strategies," the notebook runs 300 independent price/order-flow paths through both the existing AS `MarketMaker` and a naive quoter that centers a fixed spread on the Black-Scholes mid with no inventory skew — sized to match AS's baseline spread so the comparison isolates the effect of the skew itself.
+
+**Finding:** the two strategies produce nearly identical P&L distributions and, notably, *identical* realized inventory paths. The reason is a real limitation in the current simulator rather than a flaw in the AS model: `simulate_order_flow` draws buy/sell counts from Poisson distributions with fixed rates that don't depend on where the market maker's quotes sit relative to the mid. The Avellaneda-Stoikov derivation assumes the opposite — that order arrival intensity falls off with distance from the quote, $\lambda(\delta) = A e^{-\kappa \delta}$ — which is precisely what would let a skewed reservation price attract the flow that reduces inventory and repel the flow that grows it. Since this simulator's order flow is exogenous to the quotes, the AS skew changes *what price* each trade executes at, but not *how much* inventory accumulates — so a head-to-head P&L comparison can't yet show the inventory-risk benefit the theory predicts.
+
+The natural extension, not yet implemented: make order flow rates scale with quote distance from the mid (e.g. `lambda_buy * exp(-kappa * (ask - mid))`), which would bring the simulator's order flow model in line with the assumptions AS is actually derived under.
+
+### Usage
+
+```bash
+jupyter nbconvert --to notebook --execute --inplace notebooks/analysis.ipynb
+```
+
 Greeks calculator: https://www.tradingblock.com/calculators/option-greeks-calculator
